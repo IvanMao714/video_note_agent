@@ -4,10 +4,10 @@ from datetime import datetime
 import os
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound, select_autoescape
-from langchain.agents import AgentState
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 
 from config.configuration import Configuration
+from graph.state import AgentState
 
 env = Environment(
     loader=FileSystemLoader(os.path.dirname(__file__)),

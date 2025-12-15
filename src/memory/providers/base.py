@@ -1,34 +1,32 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
+
+from langgraph.store.base import BaseStore
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 
+
 class BaseMemoryClient(ABC):
-    """Base memory client class that defines a unified interface for checkpoint operations."""
+    """Base memory client class that defines a unified interface for memory/store operations."""
+
+    @abstractmethod
+    def get_store(self) -> Union[BaseStore, BaseCheckpointSaver, None]:
+        """Get the store or checkpointer instance for use with LangGraph.
+
+        Returns:
+            Store instance (BaseStore) or CheckpointSaver instance (BaseCheckpointSaver).
+            Returns None if not available.
+        """
+        pass
 
     @abstractmethod
     def get_checkpointer(self) -> BaseCheckpointSaver:
-        """Get the checkpoint saver instance.
+        """Get the checkpoint saver instance (legacy API support).
 
         Returns:
             BaseCheckpointSaver instance for use with LangGraph.
         """
         pass
 
-    @abstractmethod
-    def setup(self) -> None:
-        """Setup the memory storage (e.g., create tables if needed).
-
-        This method should be idempotent and safe to call multiple times.
-        """
-        pass
-
-    @abstractmethod
-    def cleanup(self, thread_id: Optional[str] = None) -> None:
-        """Clean up memory storage.
-
-        Args:
-            thread_id: Optional thread ID to clean up. If None, cleans up all threads.
-        """
-        pass

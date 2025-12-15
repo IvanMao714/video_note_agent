@@ -3,11 +3,10 @@ import base64
 import io
 from typing import Dict, List, Any
 
-from langchain.agents import AgentState
 from pdf2image import convert_from_path
 from PIL import Image
 
-
+from graph.state import AgentState
 from llms.llm import get_llm_by_type
 from log import get_logger
 from prompts.template import apply_prompt_template, get_prompt_template
