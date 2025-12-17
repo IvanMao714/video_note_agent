@@ -36,11 +36,14 @@ from langchain_openai.chat_models.base import (
     _handle_openai_bad_request,
     warnings,
 )
-from win32comext.adsi.demos.scp import logger
 
-from config.oss import OSSType
-from llms.providers.utils import get_text_from_bailian_result
-from oss.oss import get_oss_by_type
+
+from src.config.oss import OSSType
+from src.llms.providers.utils import get_text_from_bailian_result
+from src.oss.oss import get_oss_by_type
+from src.log import get_logger
+
+logger = get_logger(__name__)
 
 
 def _convert_delta_to_message_chunk(
@@ -459,21 +462,45 @@ class ASRDashscope:
             :param file_path:
             :param oss_file_suffix:
         """
-        file_name = file_path.split("/")[-1]
-        base_name, _ = os.path.splitext(file_name)
+        # Extract filename from path, handling both Unix and Windows paths
+        file_name = os.path.basename(file_path)
+        base_name, ext = os.path.splitext(file_name)
 
         if oss_file_suffix:
-            self.oss_file_suffix = oss_file_suffix
+            # User-specified suffix controls the OSS path.
+            # Supported forms:
+            # - "cs336/video"            -> bucket="notes", prefix="cs336/video"
+            # - "notes/cs336/video"      -> bucket="notes", prefix="cs336/video" (leading "notes/" is ignored)
+            self.oss_file_suffix = oss_file_suffix.strip().strip("/")  # Remove leading/trailing slashes
 
-        # Use forward slash for OSS object names (not os.path.join which uses backslash on Windows)
-        oss_file_path = f"{self.oss_file_suffix}/{base_name}.json" if self.oss_file_suffix else f"{base_name}.json"
-        oss_file_url = f"{self.oss.endpoint}/{self.oss.bucket}/{oss_file_path}"
+        # Do NOT read bucket name from YAML or client defaults here.
+        # Bucket is fixed to "notes". The user-provided suffix is treated as object prefix only.
+        bucket_name = "notes"
+        raw_suffix = (self.oss_file_suffix or "").strip().strip("/")
+        if raw_suffix.lower().startswith("notes/"):
+            raw_suffix = raw_suffix[6:]
+        object_prefix = raw_suffix.strip("/")
+
+        # Path for JSON cache file (downloaded)
+        # Ensure no leading slash, format: "video/cs336_02.json" or "cs336_02.json"
+        oss_json_path = f"{object_prefix}/{base_name}.json" if object_prefix else f"{base_name}.json"
+        # Path for MP4 file (uploaded)
+        # Ensure no leading slash, format: "video/cs336_02.mp4" or "cs336_02.mp4"
+        oss_mp4_path = f"{object_prefix}/{base_name}{ext}" if object_prefix else f"{base_name}{ext}"
+
+        # URL for ASR service (DashScope will download this URL).
+        # MinIO endpoints are often configured without scheme (host:port).
+        endpoint = str(getattr(self.oss, "endpoint", "")).rstrip("/")
+        if not endpoint.startswith("http://") and not endpoint.startswith("https://"):
+            scheme = "https" if getattr(self.oss, "secure", False) else "http"
+            endpoint = f"{scheme}://{endpoint}"
+        oss_file_url = f"{endpoint}/{bucket_name}/{oss_mp4_path.lstrip('/')}"
         data = None
 
         if self.cache:
-            logger.debug("Checking cache for file: %s", oss_file_path)
+            logger.debug("Checking cache for JSON file: %s", oss_json_path)
             try:
-                data_bytes = self.oss.download_file(bucket_name="notes", object_name=oss_file_path)
+                data_bytes = self.oss.download_file(bucket_name=bucket_name, object_name=oss_json_path)
                 if data_bytes:
                     data_str = data_bytes.decode('utf-8')
                     data = json.loads(data_str)
@@ -484,8 +511,9 @@ class ASRDashscope:
                 data = None
 
         if not self.cache or not data:
-
-            self.oss.upload_file(bucket_name="notes", object_name=oss_file_path, file_path=file_path)
+            # Upload MP4 file to OSS
+            logger.debug("Uploading MP4 file to OSS: %s", oss_mp4_path)
+            self.oss.upload_file(bucket_name=bucket_name, object_name=oss_mp4_path, file_path=file_path)
 
             task_id = Transcription.async_call(
                 api_key=self.api_key,
@@ -493,33 +521,80 @@ class ASRDashscope:
                 file_urls=[oss_file_url]
             )
             status_response = Transcription.wait(task=task_id)
-            if status_response.status_code == 200:
-                results = task_id.output["results"]
-                total = len(results)
+            if status_response.status_code != 200:
+                raise RuntimeError(
+                    f"ASR task failed with status_code={status_response.status_code}. "
+                    f"Response={status_response}"
+                )
 
-                for idx, entry in enumerate(results, start=1):
-                    transcription_url = entry["transcription_url"]
+            # DashScope may put results in different places depending on SDK/version.
+            # Prefer status_response.output, then fall back to task_id.output, then to mapping access.
+            results = None
+            output = getattr(status_response, "output", None)
+            if isinstance(output, dict):
+                results = output.get("results")
 
-                    resp = requests.get(transcription_url)
-                    data = resp.json()
+            if results is None:
+                output2 = getattr(task_id, "output", None)
+                if isinstance(output2, dict):
+                    results = output2.get("results")
 
-                    json_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
+            if results is None:
+                try:
+                    # Some SDK responses behave like mappings
+                    output3 = status_response.get("output") if hasattr(status_response, "get") else None
+                    if isinstance(output3, dict):
+                        results = output3.get("results")
+                except Exception:
+                    results = None
 
-                    if total == 1:
-                        # Single result: xxx.json
-                        json_file_name = f"{base_name}.json"
-                    else:
-                        # Multiple results: xxx_1.json, xxx_2.json, ...
-                        json_file_name = f"{base_name}_{idx}.json"
+            if not results:
+                out_keys = list(output.keys()) if isinstance(output, dict) else None
+                out2 = getattr(task_id, "output", None)
+                out2_keys = list(out2.keys()) if isinstance(out2, dict) else None
+                raise RuntimeError(
+                    "ASR task completed but no results were returned by DashScope. "
+                    f"status_code={status_response.status_code}, "
+                    f"status_response.output_keys={out_keys}, "
+                    f"task_id.output_keys={out2_keys}"
+                )
 
-                    # Use forward slash for OSS object names
-                    oss_json_path = f"{self.oss_file_suffix}/{json_file_name}" if self.oss_file_suffix else json_file_name
+            total = len(results)
+            for idx, entry in enumerate(results, start=1):
+                if not isinstance(entry, dict) or "transcription_url" not in entry:
+                    logger.warning("Invalid ASR result entry at index %s: %s", idx, entry)
+                    continue
 
-                    self.oss.upload_bytes(
-                        bucket_name="notes",
-                        object_name=oss_json_path,
-                        data=json_bytes,
-                    )
+                transcription_url = entry.get("transcription_url")
+                if not transcription_url:
+                    logger.warning("Empty transcription_url at index %s", idx)
+                    continue
+
+                resp = requests.get(transcription_url)
+                resp.raise_for_status()
+                data = resp.json()
+
+                json_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
+
+                if total == 1:
+                    # Single result: xxx.json
+                    json_file_name = f"{base_name}.json"
+                else:
+                    # Multiple results: xxx_1.json, xxx_2.json, ...
+                    json_file_name = f"{base_name}_{idx}.json"
+
+                # Use forward slash for OSS object names
+                oss_json_path = (
+                    f"{self.oss_file_suffix}/{json_file_name}"
+                    if self.oss_file_suffix
+                    else json_file_name
+                )
+
+                self.oss.upload_bytes(
+                    bucket_name=bucket_name,
+                    object_name=oss_json_path,
+                    data=json_bytes,
+                )
 
         text = ""
         if data and isinstance(data, dict) and 'transcripts' in data:

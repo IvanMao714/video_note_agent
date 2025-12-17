@@ -6,8 +6,8 @@ import os
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound, select_autoescape
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 
-from config.configuration import Configuration
-from graph.state import AgentState
+from src.config.configuration import Configuration
+from src.graph.state import AgentState
 
 env = Environment(
     loader=FileSystemLoader(os.path.dirname(__file__)),
@@ -115,7 +115,6 @@ def apply_prompt_template(
         raise ValueError(f"Error applying template {prompt_name} for locale {locale}: {e}")
 
 if __name__ == '__main__':
-    from log import get_logger
+    from src.log import get_logger
     logger = get_logger(__name__)
-    # logger.info(get_prompt_template("slide_analyzer","en_US"))
     logger.info(apply_prompt_template("slide_analyzer", AgentState(messages=[{"role": "user", "content": "Hello"}]), locale="en_US"))

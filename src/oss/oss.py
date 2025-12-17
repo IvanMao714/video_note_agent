@@ -5,13 +5,12 @@ from typing import Any, Dict, get_args
 
 from dotenv import load_dotenv
 
+from src.oss.providers.minio_oss import MinIOClient
+from src.config.oss import OSSType
+from src.oss.providers.base import BaseOSSClient
+from src.config import load_yaml_config
 
-from config.oss import OSSType
-from oss.providers.minio_oss import MinIOClient
-from oss.providers.base import BaseOSSClient
-from config import load_yaml_config
-
-from log import get_logger
+from src.log import get_logger
 
 logger = get_logger(__name__)
 
@@ -157,7 +156,7 @@ def _create_oss_use_conf(oss_type: OSSType, conf: Dict[str, Any]) -> BaseOSSClie
             secret_key=merged_conf.get("secret_key", ""),
             secure=merged_conf.get("secure", False),
             region=merged_conf.get("region"),
-            bucket_name=merged_conf.get("bucket_name", "test"),
+            bucket_name=merged_conf.get("bucket_name", "notes"),
         )
     else:
         # Default to MinIO
@@ -168,7 +167,7 @@ def _create_oss_use_conf(oss_type: OSSType, conf: Dict[str, Any]) -> BaseOSSClie
             secret_key=merged_conf.get("secret_key", "minioadmin"),
             secure=merged_conf.get("secure", False),
             region=merged_conf.get("region"),
-            bucket_name=merged_conf.get("bucket_name"),
+            bucket_name=merged_conf.get("bucket_name", "notes"),
         )
 
 
@@ -194,7 +193,6 @@ def get_oss_by_type(oss_type: OSSType) -> BaseOSSClient:
         return _oss_cache[oss_type]
 
     conf = load_yaml_config(_get_config_file_path())
-    logger.debug(f"Loaded OSS configuration: {conf}")
     oss_client = _create_oss_use_conf(oss_type, conf)
     _oss_cache[oss_type] = oss_client
     return oss_client

@@ -5,17 +5,12 @@ from typing import Any, Dict, get_args, Type
 
 import httpx
 from langchain_core.language_models import BaseChatModel
-# from langchain_deepseek import ChatDeepSeek
-# from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
-from posthog import api_key
 
-from config.agents import LLMType
-from llms.providers.bailian import ChatDashscope, ASRDashscope
-from log import get_logger
+from src.config.agents import LLMType
+from src.llms.providers.bailian import ChatDashscope, ASRDashscope
+from src.log import get_logger
 from src.config import load_yaml_config
-# from src.config.agents import LLMType
-# from src.llms.providers.dashscope import ChatDashscope
 
 logger = get_logger(__name__)
 
@@ -210,7 +205,6 @@ def _create_llm_use_conf(llm_type: LLMType, conf: Dict[str, Any]) -> ChatOpenAI 
         http_async_client = httpx.AsyncClient(verify=False)
         merged_conf["http_client"] = http_client
         merged_conf["http_async_client"] = http_async_client
-    logger.debug(f"Conf is: {merged_conf}")
     # Check if it's Google AI Studio platform based on configuration
     platform = merged_conf.pop("platform", "").lower()  # Remove platform from config as it's not a valid LLM parameter
     is_google_aistudio = platform == "google_aistudio" or platform == "google-aistudio"
@@ -221,31 +215,8 @@ def _create_llm_use_conf(llm_type: LLMType, conf: Dict[str, Any]) -> ChatOpenAI 
         # Handle OpenRouter specific configuration
         merged_conf["base_url"] = base_url
         merged_conf["api_key"] = api_key
-        # logger.debug(f"Using OpenRouter with config: {merged_conf}")
         return ChatOpenAI(**merged_conf)
 
-    # if is_google_aistudio:
-    #     # Handle Google AI Studio specific configuration
-    #     gemini_conf = merged_conf.copy()
-    #
-    #     # Map common keys to Google AI Studio specific keys
-    #     if "api_key" in gemini_conf:
-    #         gemini_conf["google_api_key"] = gemini_conf.pop("api_key")
-    #
-    #     # Remove base_url and platform since Google AI Studio doesn't use them
-    #     gemini_conf.pop("base_url", None)
-    #     gemini_conf.pop("platform", None)
-    #
-    #     # Remove unsupported parameters for Google AI Studio
-    #     gemini_conf.pop("http_client", None)
-    #     gemini_conf.pop("http_async_client", None)
-    #
-    #     return ChatGoogleGenerativeAI(**gemini_conf)
-
-    # if "azure_endpoint" in merged_conf or os.getenv("AZURE_OPENAI_ENDPOINT"):
-    #     return AzureChatOpenAI(**merged_conf)
-    #
-    # # Check if base_url is dashscope endpoint
     if platform == "alibailian":
         api_key = os.getenv("ALIBAILIN_KEY", None)
         base_url = os.getenv("ALIBAILIN_URL", None)
@@ -262,12 +233,6 @@ def _create_llm_use_conf(llm_type: LLMType, conf: Dict[str, Any]) -> ChatOpenAI 
         else:
             merged_conf["extra_body"] = {"enable_thinking": False}
         return ChatDashscope(**merged_conf)
-
-    # if llm_type == "reasoning":
-    #     merged_conf["api_base"] = merged_conf.pop("base_url", None)
-    #     return ChatDeepSeek(**merged_conf)
-    # else:
-    #     return ChatOpenAI(**merged_conf)
     else:
         return ChatOpenAI(**merged_conf)
 
@@ -319,7 +284,6 @@ def get_configured_llm_models() -> dict[str, list[str]]:
     """
     try:
         conf = load_yaml_config(_get_config_file_path())
-        # logger.debug(f"Loaded LLM configuration: {conf}")
         llm_type_config_keys = _get_llm_type_config_keys()
 
         configured_models: dict[str, list[str]] = {}
@@ -341,9 +305,7 @@ def get_configured_llm_models() -> dict[str, list[str]]:
                 configured_models.setdefault(llm_type, []).append(model_name)
 
         return configured_models
-
     except Exception as e:
-        # Log error and return empty dict to avoid breaking the application
         logger.warning(f"Failed to load LLM configuration: {e}")
         return {}
 
@@ -425,7 +387,6 @@ def _infer_token_limit_from_model(model_name: str) -> int:
         if key in model_name_lower:
             return limit
     
-    # Return safe default if no match found
     return defaults["default"]
 
 
@@ -473,13 +434,7 @@ def get_llm_token_limit_by_type(llm_type: str) -> int:
         inferred_limit = _infer_token_limit_from_model(model_name)
         return inferred_limit
     
-    # Fallback: safe default
     return _get_model_token_limit_defaults()["default"]
-
-
-# In the future, we will use reasoning_llm and vl_llm for different purposes
-# reasoning_llm = get_llm_by_type("reasoning")
-# vl_llm = get_llm_by_type("vision")
 
 if __name__ == '__main__':
     get_llm_by_type("vision")

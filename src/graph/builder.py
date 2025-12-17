@@ -1,62 +1,49 @@
-
-import sys
-from pathlib import Path
 from langgraph.graph import END, START, StateGraph
 
-# Add src directory to Python path to ensure imports work
-# This is needed when the module is loaded directly by langgraph
-_current_file = Path(__file__).resolve()
-_src_dir = _current_file.parent.parent  # Go up from graph/ to src/
-if str(_src_dir) not in sys.path:
-    sys.path.insert(0, str(_src_dir))
-
-from graph.nodes import (
+from src.graph.nodes import (
     note_agent_node,
     slides_analysis_node,
-    video_analysis_node,
+    video_analysis_node, make_save_state_node,
 )
-from graph.state import AgentState
-from log import get_logger
+from src.graph.state import AgentState
+from src.log import get_logger
+logger = get_logger(__name__)
 
 
-def _build_base_graph():
+def _build_base_graph(store=None):
     """Build and return the base state graph with all nodes and edges.
     
-    Implements parallel execution following the example pattern:
-    1. START -> slides_analysis (fan-out 1)
-    2. START -> video_analysis (fan-out 2)
-    3. slides_analysis -> note_agent (fan-in)
-    4. video_analysis -> note_agent (fan-in)
-    5. note_agent -> END
-    
-    By using multiple direct edges from START to slides_analysis and video_analysis,
-    these two nodes will execute in parallel. Nodes internally check if execution is needed,
-    returning immediately if not. Both nodes complete and enter note_agent, implementing fan-in.
+    Args:
+        store: Optional store instance for state persistence. If provided,
+            a save_state node will be added to the graph.
     
     Returns:
-        StateGraph: The graph builder instance.
+        StateGraph: The graph builder instance with nodes and edges configured.
     """
     builder = StateGraph(AgentState)
-    
-    # Add nodes
+
     builder.add_node("slides_analysis", slides_analysis_node)
     builder.add_node("video_analysis", video_analysis_node)
     builder.add_node("note_agent", note_agent_node)
-    
-    # From START to two analysis nodes (fan-out, parallel execution)
+
+    # Add save_state node only if store is provided
+    if store is not None:
+        builder.add_node("save_state", make_save_state_node(store))
+
     builder.add_edge(START, "slides_analysis")
     builder.add_edge(START, "video_analysis")
-    
-    # From two analysis nodes to note_agent (fan-in)
+
     builder.add_edge("slides_analysis", "note_agent")
     builder.add_edge("video_analysis", "note_agent")
-    
-    # End after note_agent
-    builder.add_edge("note_agent", END)
-    
+
+    # After note_agent: save state then end if store exists, otherwise end directly
+    if store is not None:
+        builder.add_edge("note_agent", "save_state")
+        builder.add_edge("save_state", END)
+    else:
+        builder.add_edge("note_agent", END)
+
     return builder
-
-
 def build_graph(store=None, checkpointer=None):
     """Build and return the agent workflow graph with optional memory/store.
     
@@ -69,7 +56,7 @@ def build_graph(store=None, checkpointer=None):
     Returns:
         Compiled graph instance.
     """
-    builder = _build_base_graph()
+    builder = _build_base_graph(store=store)
     
     if store is not None and checkpointer is not None:
         return builder.compile(store=store, checkpointer=checkpointer)
@@ -83,8 +70,4 @@ def build_graph(store=None, checkpointer=None):
     else:
         return builder.compile()
 
-
-logger = get_logger(__name__)
-
-# store = get_store_by_type("postgres")
 graph = build_graph()

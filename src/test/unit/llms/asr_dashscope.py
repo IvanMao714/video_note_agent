@@ -1,6 +1,6 @@
 import pytest
 
-from llms.llm import get_llm_by_type
+from src.llms.llm import get_llm_by_type
 
 
 @pytest.fixture

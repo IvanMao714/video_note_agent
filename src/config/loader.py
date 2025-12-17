@@ -51,7 +51,7 @@ def get_int_env(name: str, default: int = 0) -> int:
     try:
         return int(val.strip())
     except ValueError:
-        from log import get_logger
+        from src.log import get_logger
         logger = get_logger(__name__)
         logger.warning(f"Invalid integer value for {name}: {val}. Using default {default}.")
         return default

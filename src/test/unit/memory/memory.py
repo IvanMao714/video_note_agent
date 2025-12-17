@@ -1,7 +1,7 @@
 import pytest
 
-from memory.memory import get_memory_by_type, get_memory_client, get_configured_memory_clients
-from memory.providers.base import BaseMemoryClient
+from src.memory.memory import get_memory_by_type, get_memory_client
+from src.memory.providers.base import BaseMemoryClient
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 

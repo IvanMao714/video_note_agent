@@ -4,7 +4,7 @@ from typing import Optional
 from minio import Minio, S3Error
 
 from src.oss.providers.base import BaseOSSClient
-from log import get_logger
+from src.log import get_logger
 logger = get_logger(__name__)
 
 class MinIOClient(BaseOSSClient):
@@ -45,32 +45,9 @@ class MinIOClient(BaseOSSClient):
             region=region,
         )
 
-        self.policy = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    # For the bucket itself: allow getting location info and listing objects
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "*"},  # All users (including anonymous)
-                    "Action": [
-                        "s3:GetBucketLocation",
-                        "s3:ListBucket",
-                    ],
-                    "Resource": f"arn:aws:s3:::{self.bucket}",
-                },
-                {
-                    # For objects in the bucket: allow download and upload
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "root"},  # All users (including anonymous)
-                    "Action": [
-                        "s3:GetObject",  # Download
-                        "s3:PutObject",   # Upload
-                        "s3:ListBucket"  # List
-                    ],
-                    "Resource": f"arn:aws:s3:::{self.bucket}/*",
-                },
-            ],
-        }
+        # Public-read policy (for DashScope to download uploaded media).
+        # NOTE: Upload still requires credentials; we only grant anonymous GetObject.
+        self.policy = self._build_public_read_policy(self.bucket) if self.bucket else None
 
         # Delay bucket check to avoid blocking network calls during initialization.
         # Bucket will be created automatically on first use if needed.
@@ -97,11 +74,30 @@ class MinIOClient(BaseOSSClient):
         try:
             if not self.client.bucket_exists(bucket):
                 self.client.make_bucket(bucket)
-                self.client.set_bucket_policy(bucket, json.dumps(self.policy))
                 logger.warning(f"Bucket '{bucket}' did not exist and was created.")
+
+            # Always (re)apply public-read policy on first use, even if bucket already existed.
+            # This avoids 403 for anonymous downloads (e.g., DashScope file_url fetch).
+            policy = self._build_public_read_policy(bucket)
+            self.client.set_bucket_policy(bucket, json.dumps(policy))
             self._bucket_checked = True
         except Exception as e:
             logger.warning(f"Failed to check/create bucket '{bucket}': {e}. Will retry on next operation.")
+
+    @staticmethod
+    def _build_public_read_policy(bucket: str) -> dict:
+        """Build a public-read bucket policy for the given bucket name."""
+        return {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": ["s3:GetObject"],
+                    "Resource": f"arn:aws:s3:::{bucket}/*",
+                }
+            ],
+        }
 
 #
     def upload_file(self, bucket_name: str, object_name: str, file_path: str) -> bool:

@@ -13,6 +13,7 @@ class AgentState(MessagesState):
     slides_summary: List[str]
     
     video_input_path: str = ""  # Video input path
+    video_oss_suffix: str = ""  # OSS file suffix for video storage (optional, user-specified)
     video_transcript: str = ""  # Video transcript text
     
     notes: str = ""  # Generated notes

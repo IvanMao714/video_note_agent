@@ -1,6 +1,8 @@
-from memory.providers.base import BaseMemoryClient
-from memory.providers.postgres_memory import PostgresMemoryClient
+from src.memory.providers.base import BaseMemoryClient
 
-__all__ = ["BaseMemoryClient", "PostgresMemoryClient", ]
+# Optional provider (may require extra deps). Import lazily at call sites.
+# from src.memory.providers.postgres_memory import PostgresMemoryClient
+
+__all__ = ["BaseMemoryClient"]
 
 

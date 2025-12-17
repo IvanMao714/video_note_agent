@@ -2,17 +2,11 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-from config.memory import MemoryType
-from memory.providers.base import BaseMemoryClient
-from memory.providers.postgres_memory import PostgresMemoryClient
-from config import load_yaml_config
-
-try:
-    from langgraph.checkpoint.base import BaseCheckpointSaver
-except ImportError:
-    BaseCheckpointSaver = None
-
-from log import get_logger
+from src.memory.providers.postgres_memory import PostgresMemoryClient
+from src.config.memory import MemoryType
+from src.memory.providers.base import BaseMemoryClient
+from src.config import load_yaml_config
+from src.log import get_logger
 
 logger = get_logger(__name__)
 
@@ -226,12 +220,6 @@ def get_store_by_type(memory_type: MemoryType = "default"):
     """
     client = get_memory_by_type(memory_type)
     store = client.get_store()
-    # Setup store if available
-    if store is not None:
-        try:
-            client.setup()
-        except Exception as e:
-            logger.warning(f"Failed to setup store: {e}")
     return store
 
 
@@ -244,57 +232,5 @@ def get_checkpointer_by_type(memory_type: MemoryType = "default"):
     Returns:
         BaseCheckpointSaver instance if available, None otherwise.
     """
-    if BaseCheckpointSaver is None:
-        raise ImportError("BaseCheckpointSaver is not available")
     client = get_memory_by_type(memory_type)
     return client.get_checkpointer()
-
-
-# def get_configured_memory_clients() -> dict[str, list[str]]:
-#     """Get all configured memory clients grouped by type.
-#
-#     Scans the configuration file and environment variables to find all configured
-#     memory clients. Groups them by memory type (postgres, inmemory) and returns
-#     a dictionary mapping each type to a list of configured client names.
-#
-#     Returns:
-#         Dictionary mapping memory type names to lists of configured client names.
-#         For example: {"postgres": ["postgres1"], "inmemory": ["inmemory1"]}.
-#         Returns an empty dictionary if configuration loading fails or no clients
-#         are configured.
-#
-#     Note:
-#         This function handles errors gracefully. If configuration loading fails,
-#         it logs a warning and returns an empty dictionary instead of raising
-#         an exception.
-#     """
-#     try:
-#         conf = load_yaml_config(_get_config_file_path())
-#         memory_type_config_keys = _get_memory_type_config_keys()
-#
-#         configured_clients: dict[str, list[str]] = {}
-#
-#         for memory_type in get_args(MemoryType):
-#             # Get configuration from YAML file
-#             config_key = memory_type_config_keys.get(memory_type, "")
-#             yaml_conf = conf.get(config_key, {}) if config_key else {}
-#
-#             # Get configuration from environment variables
-#             env_conf = _get_env_memory_conf(memory_type)
-#
-#             # Merge configurations, with environment variables taking precedence
-#             merged_conf = {**yaml_conf, **env_conf}
-#
-#             # Check if client is configured
-#             if merged_conf or memory_type == "inmemory":
-#                 # In-memory doesn't need configuration
-#                 configured_clients.setdefault(memory_type, []).append(
-#                     merged_conf.get("host", "default") if memory_type == "postgres" else "default"
-#                 )
-#
-#         return configured_clients
-#
-#     except Exception as e:
-#         # Log error and return empty dict to avoid breaking the application
-#         logger.warning(f"Failed to load memory configuration: {e}")
-#         return {}

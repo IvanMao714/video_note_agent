@@ -1,6 +1,6 @@
 import pytest
 
-from oss.oss import get_oss_by_type
+from src.oss.oss import get_oss_by_type
 
 
 @pytest.fixture

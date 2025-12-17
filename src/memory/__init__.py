@@ -1,4 +1,4 @@
-from memory.memory import (
+from src.memory.memory import (
     get_memory_by_type,
     get_memory_client,
     get_store_by_type,

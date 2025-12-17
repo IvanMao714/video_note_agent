@@ -1,11 +1,11 @@
 from langchain_core.runnables import RunnableConfig
 
-from graph.slide_analysis.utils import analyze_presentation, get_slides_images, encode_image
-from graph.state import AgentState
-from llms.llm import get_llm_by_type
-from prompts.template import apply_prompt_template
-from log import get_logger
-
+from src.graph.slide_analysis.utils import analyze_presentation, get_slides_images, encode_image
+from src.graph.state import AgentState
+from src.llms.llm import get_llm_by_type
+from src.prompts.template import apply_prompt_template
+from src.log import get_logger
+from datetime import datetime, timezone
 logger = get_logger(__name__)
 
 async def slides_analysis_node(
@@ -67,10 +67,13 @@ async def video_analysis_node(
         # Get ASR instance for video transcription
         asr = get_llm_by_type("asr")
         
+        # Get OSS file suffix from user-specified state, or use None (will use ASR instance default)
+        oss_file_suffix = state.get("video_oss_suffix") or None
+        
         # Call ASR for transcription (invoke is synchronous, needs to run in executor)
         import asyncio
         loop = asyncio.get_event_loop()
-        transcript = await loop.run_in_executor(None, asr.invoke, video_input_path, "cs336/video")
+        transcript = await loop.run_in_executor(None, asr.invoke, video_input_path, oss_file_suffix)
         
         logger.info(f"Successfully transcribed video, transcript length: {len(transcript)}")
         return {"video_transcript": transcript}
@@ -120,8 +123,6 @@ def find_matching_slides(note_content: str, slides_list: list, slides_images: li
         matching_slides = slides_images[:3]  # Return first 3 as default
     
     return matching_slides
-
-
 
 
 async def note_agent_node(
@@ -194,14 +195,7 @@ async def note_agent_node(
                    f"- Key Insights\n\n"
                    f"{slides_text}\n\n"
         })
-    
-    messages_content.append({
-        "type": "text", 
-        "text": "Please generate comprehensive, structured notes based on the above structured slide content and video transcript. "
-                "The notes should integrate all key information from slides (Executive Summary, Visual Analysis, Textual Content, Key Insights) "
-                "and video content to form a coherent study note."
-    })
-    
+
     note_state = AgentState(
         messages=[{
             "role": "user",
@@ -212,8 +206,7 @@ async def note_agent_node(
     try:
         # Apply note_generator prompt template
         # This prompt file explains how to use the structured format from slide_analyzer
-
-        messages = apply_prompt_template("note_generator", note_state, locale="zh-CN")
+        messages = apply_prompt_template("note_generator", note_state)
 
         
         # Call LLM to generate notes
@@ -247,6 +240,53 @@ async def note_agent_node(
         "slides_images": state.get("slides_images", []),
     }
 
+
+
+def make_save_state_node(store):
+    """Create a save state node function for the graph.
+    
+    Args:
+        store: Store instance for persisting state data.
+    
+    Returns:
+        Async function that saves the current state to the store.
+    """
+    async def save_state_node(state: AgentState, config: RunnableConfig) -> dict:
+        """Save the current agent state to the store.
+        
+        Args:
+            state: The current agent state to save.
+            config: Runnable configuration containing thread_id.
+        
+        Returns:
+            Empty dictionary (state is saved to store, not returned).
+        """
+        if store is None:
+            return {}
+
+        # RunnableConfig is a TypedDict, can be accessed like a dict
+        configurable = config.get("configurable", {}) if isinstance(config, dict) else {}
+        thread_id = configurable.get("thread_id", "no-thread") if configurable else "no-thread"
+
+        payload = {
+            "thread_id": thread_id,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "slides_input_path": state.get("slides_input_path", ""),
+            "video_input_path": state.get("video_input_path", ""),
+            "user_query": state.get("user_query", ""),
+            "notes": state.get("notes", ""),
+            "video_transcript": state.get("video_transcript", ""),
+            "slides_list": state.get("slides_list", []),
+        }
+
+        # PostgresStore typically uses async aput; fallback to sync put for compatibility
+        if hasattr(store, "aput"):
+            await store.aput(("runs", thread_id), "final_state", payload)
+        else:
+            store.put(("runs", thread_id), "final_state", payload)
+
+        return {}
+    return save_state_node
 
 if __name__ == '__main__':
     import asyncio
