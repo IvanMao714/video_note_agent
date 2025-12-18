@@ -37,18 +37,14 @@ async def run_graph(slides_path: str | None, video_path: str | None, video_oss_s
             #
             # Store 用于长期存储（可选）
             store = get_store_by_type("postgres")
-            if store:
-                logger.info("✓ PostgreSQL store enabled (for key-value storage)")
         except Exception as e:
             logger.warning(f"PostgreSQL memory unavailable, fallback to no-memory mode: {e}")
             logger.warning(f"Error details: {e}", exc_info=True)
-    else:
-        logger.info("Running without persistence (no database storage)")
+
 
     # 构建 graph：优先使用 checkpointer（保存执行状态）
     # 如果同时提供 store 和 checkpointer，两者都会使用
     graph = build_graph(store=store, checkpointer=checkpointer)
-    logger.info("✓ Graph built")
 
     # 初始 state（按你已有 state 字段）
     initial_state = {
@@ -102,7 +98,7 @@ def main():
     args = parser.parse_args()
 
     slides_path = args.slides.strip() or None
-    video_path = args.video.strip() or "E:\\video_note_agent\\example\\cs336_02.mp4"
+    video_path = args.video.strip() or "E:\\video_note_agent\\example\\cs336_01.mp4"
     video_oss_suffix = args.video_oss_suffix.strip() or "cs336/video"
 
     if not slides_path and not video_path:
@@ -112,7 +108,6 @@ def main():
     # _check_file(video_path, "Video")
 
     logger.info("=" * 60)
-    logger.info("Running graph...")
     logger.info(f"Slides: {slides_path or '(none)'}")
     logger.info(f"Video : {video_path or '(none)'}")
     logger.info(f"Query : {args.query or '(none)'}")
@@ -122,28 +117,9 @@ def main():
 
     result = asyncio.run(run_graph(slides_path, video_path, video_oss_suffix, args.query, args.memory))
 
-    # 输出摘要
-    logger.info("=" * 60)
-    logger.info("DONE. Summary:")
-    if result.get("slides_list"):
-        logger.info(f"slides_list: {len(result['slides_list'])} pages")
-    if result.get("video_transcript"):
-        logger.info(f"video_transcript: {len(result['video_transcript'])} chars")
-    if result.get("notes"):
-        logger.info(f"notes: {len(result['notes'])} chars")
-    if result.get("slides_images"):
-        logger.info(f"slides_images: {len(result['slides_images'])} images")
-    
-    if args.memory:
-        logger.info("\n" + "=" * 60)
-        logger.info("Database Storage Info:")
-        logger.info("=" * 60)
-        logger.info("Graph state has been saved to PostgreSQL database.")
-        logger.info("=" * 60)
-    logger.info("=" * 60)
 
     # 保存结果
-    out = Path("test_output.txt")
+    out = Path("test_output.md")
     with out.open("w", encoding="utf-8") as f:
         f.write("=== INPUT ===\n")
         f.write(f"slides: {slides_path or ''}\n")
@@ -164,7 +140,6 @@ def main():
             f.write("\n=== NOTES ===\n")
             f.write(result["notes"] + "\n")
 
-    logger.info(f"✓ Saved: {out.resolve()}")
 
 
 if __name__ == "__main__":

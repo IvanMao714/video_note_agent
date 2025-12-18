@@ -53,7 +53,7 @@ class MinIOClient(BaseOSSClient):
         # Bucket will be created automatically on first use if needed.
         self._bucket_checked = False
 
-        logger.info(f"MinIO client initialized for endpoint: {endpoint}")
+        logger.debug(f"MinIO client initialized for endpoint: {endpoint}")
 
     def _ensure_bucket_exists(self, bucket_name: Optional[str] = None) -> None:
         """Ensure bucket exists, create it if it doesn't exist.
@@ -119,7 +119,7 @@ class MinIOClient(BaseOSSClient):
                 object_name=object_name,
                 file_path=file_path,
             )
-            logger.info(f"Successfully uploaded {file_path} to {bucket_name}/{object_name}")
+            logger.debug(f"Successfully uploaded {file_path} to {bucket_name}/{object_name}")
             return True
         except S3Error as e:
             logger.error(f"Failed to upload file to MinIO: {e}")
@@ -147,7 +147,7 @@ class MinIOClient(BaseOSSClient):
                 data=data_stream,
                 length=len(data),
             )
-            logger.info(f"Successfully uploaded bytes to {bucket_name}/{object_name}")
+            logger.debug(f"Successfully uploaded bytes to {bucket_name}/{object_name}")
             return True
         except S3Error as e:
             logger.error(f"Failed to upload bytes to MinIO: {e}")
@@ -176,7 +176,7 @@ class MinIOClient(BaseOSSClient):
                 object_name=object_name,
             )
             data = response.read()  # Read entire file content into memory.
-            logger.info(f"Successfully retrieved {bucket_name}/{object_name}")
+            logger.debug(f"Successfully retrieved {bucket_name}/{object_name}")
             return data
         except S3Error as e:
             logger.error(f"Failed to get file from MinIO: {e}")

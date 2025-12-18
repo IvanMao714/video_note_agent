@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from src.log.trace import TRACE
 from src.log.colorformat import ColoredFormatter
 from src.config import load_yaml_config
 
@@ -11,6 +12,15 @@ _initialized = False
 
 # Cache for config file path to avoid blocking calls to os.getcwd()
 _config_file_path_cache: Optional[str] = None
+
+class AllowOnly(logging.Filter):
+    def __init__(self, prefixes: tuple[str, ...]):
+        super().__init__()
+        self.prefixes = prefixes
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.name.startswith(self.prefixes)
+
 
 
 def _get_config_file_path() -> str:
@@ -49,6 +59,7 @@ def _get_log_level_from_config() -> int:
         # Map string names to logging constants
         level_map = {
             "DEBUG": logging.DEBUG,
+            "TRACE": TRACE,
             "INFO": logging.INFO,
             "WARNING": logging.WARNING,
             "ERROR": logging.ERROR,
@@ -111,6 +122,8 @@ def setup_colored_logging(log_level=None):
         
         # Add formatter to handler
         ch.setFormatter(formatter)
+
+        ch.addFilter(AllowOnly(prefixes=("src.", "__main__")))
         
         # Add handler to root logger
         root_logger.addHandler(ch)

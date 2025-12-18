@@ -1,6 +1,8 @@
 import logging
 from colorama import init, Fore, Style
 
+from src.log.trace import TRACE
+
 # Initialize colorama with autoreset to ensure colors reset after each print
 # This prevents color codes from affecting subsequent terminal output
 init(autoreset=True)
@@ -19,6 +21,7 @@ class ColoredFormatter(logging.Formatter):
     # Fore is foreground color, Style.BRIGHT makes colors more vivid
     COLOR_MAP = {
         logging.DEBUG: Fore.CYAN + Style.BRIGHT,  # Cyan for debug messages
+        TRACE: Fore.BLUE + Style.BRIGHT,  # Bright blue for trace messages
         logging.INFO: Fore.GREEN,  # Green for info messages
         logging.WARNING: Fore.YELLOW + Style.BRIGHT,  # Bright yellow for warnings
         logging.ERROR: Fore.RED + Style.BRIGHT,  # Bright red for errors
@@ -27,11 +30,12 @@ class ColoredFormatter(logging.Formatter):
 
     # Log output format: [timestamp] [level] <module_name> message
     # FORMAT = "[%(asctime)s] [%(levelname)-8s] <%(name)s> %(message)s"
-    FORMAT = "[%(asctime)s] [%(levelname)-1s](%(filename)s:%(lineno)d) %(message)s"
+    # FORMAT = "[%(levelname)-1s](%(filename)s:%(lineno)d) %(message)s"
+    FORMAT = "%(asctime)s [%(levelname)s]%(name)s:%(filename)s:%(lineno)d %(message)s"
 
     # DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-    DATE_FORMAT = "%H:%M:%S"
-
+    # DATE_FORMAT = "%H:%M:%S"
+    DATE_FORMAT = "%M:%S"
     def __init__(self, fmt=FORMAT, datefmt=DATE_FORMAT):
         """
         Initialize the ColoredFormatter.
